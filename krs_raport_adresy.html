@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <title>Raport adresowy KRS</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f6f8fa;
+            margin: 40px;
+        }
+        h1 {
+            color: #1f2937;
+        }
+        input, button {
+            padding: 8px;
+            font-size: 16px;
+        }
+        button {
+            cursor: pointer;
+        }
+        .adres {
+            background: white;
+            padding: 15px;
+            margin: 15px 0;
+            border-left: 6px solid #9ca3af;
+        }
+        .aktualny {
+            border-left-color: #16a34a;
+            background: #f0fdf4;
+        }
+        .historyczny {
+            border-left-color: #f59e0b;
+            background: #fffbeb;
+        }
+        .status {
+            font-weight: bold;
+        }
+        .error {
+            color: red;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+
+<h1>📄 Raport zmian adresowych KRS</h1>
+
+<label>Numer KRS:</label>
+<input type="text" id="krs" value="0000906265">
+<button onclick="generateReport()">Generuj raport</button>
+
+<div id="error" class="error"></div>
+<div id="report"></div>
+
+<script>
+async function generateReport() {
+    const krs = document.getElementById("krs").value.trim();
+    const reportDiv = document.getElementById("report");
+    const errorDiv = document.getElementById("error");
+
+    reportDiv.innerHTML = "";
+    errorDiv.textContent = "";
+
+    if (!krs) {
+        errorDiv.textContent = "Podaj numer KRS.";
+        return;
+    }
+
+    const url = `https://wyszukiwarka-krs-api.ms.gov.pl/api/krs/odpispelny/${krs}?rejestr=P`;
+
+    try {
+        const response = await fetch(url);
+        if (!response.ok) {
+            throw new Error("Nie udało się pobrać danych z API.");
+        }
+
+        const data = await response.json();
+
+        // ===== MAPA WPISÓW: numerWpisu -> dataWpisu =====
+        const wpisy = data?.odpis?.naglowekP?.wpis || [];
+        const wpisDateMap = {};
+        wpisy.forEach(w => {
+            wpisDateMap[w.numerWpisu] = w.dataWpisu;
+        });
+
+        // ===== ADRESY =====
+        const addresses =
+            data?.odpis?.dane?.dzial1?.siedzibaIAdres?.adres;
+
+        if (!addresses || addresses.length === 0) {
+            reportDiv.innerHTML = "<p>Brak danych adresowych.</p>";
+            return;
+        }
+
+        // sortowanie chronologiczne
+        addresses.sort(
+            (a, b) => Number(a.nrWpisuWprow) - Number(b.nrWpisuWprow)
+        );
+
+        addresses.forEach((addr, index) => {
+            const isLast = index === addresses.length - 1;
+            const nrWpisu = addr.nrWpisuWprow;
+            const dataWpisu = wpisDateMap[nrWpisu] || "brak daty";
+
+            const div = document.createElement("div");
+            div.className = "adres " + (isLast ? "aktualny" : "historyczny");
+
+            div.innerHTML = `
+                <div class="status">
+                    ${isLast ? "🟢 ADRES AKTUALNY" : "🟡 ADRES HISTORYCZNY"}
+                </div>
+                <strong>Wpis KRS:</strong> ${nrWpisu}
+                <em>(data: ${dataWpisu})</em><br>
+                <strong>Ulica:</strong> ${addr.ulica || "-"}<br>
+                <strong>Nr domu:</strong> ${addr.nrDomu || "-"}<br>
+                <strong>Miejscowość:</strong> ${addr.miejscowosc || "-"}<br>
+                <strong>Kod pocztowy:</strong> ${addr.kodPocztowy || "-"}<br>
+                <strong>Poczta:</strong> ${addr.poczta || "-"}<br>
+                <strong>Kraj:</strong> ${addr.kraj || "-"}
+            `;
+
+            reportDiv.appendChild(div);
+        });
+
+    } catch (err) {
+        errorDiv.textContent = err.message;
+    }
+}
+</script>
+
+
+
+</body>
+</html>
